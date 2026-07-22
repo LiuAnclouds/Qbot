@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# 日志和数据
+logs/
+data/conversations/
+data/profiles/
+data/archives/
+*.log
+
+# 环境
+.env
+venv/
+
+# 系统
+.DS_Store
+Thumbs.db
