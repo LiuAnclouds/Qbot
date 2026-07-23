@@ -71,8 +71,18 @@ class LLMClient:
             ) as resp:
                 data = await resp.json()
                 if resp.status != 200:
+                    print(f"[LLM] API错误 {resp.status}: {json.dumps(data, ensure_ascii=False)[:300]}")
                     raise RuntimeError(f"LLM API error {resp.status}: {json.dumps(data, ensure_ascii=False)[:300]}")
                 content = data["choices"][0]["message"]["content"]
+                # 诊断: 图片消息时打印模型与原始返回，排查"收不到图片内容"
+                has_img = any(
+                    isinstance(m.get("content"), list)
+                    and any(c.get("type") == "image_url" for c in m["content"] if isinstance(c, dict))
+                    for m in messages
+                )
+                if has_img:
+                    print(f"[LLM-Diag] 图片消息 → 模型={model}")
+                    print(f"[LLM-Diag] 原始返回: {content[:400]}")
                 return clean_response(content.strip(), model)
 
     async def chat_with_fallback(

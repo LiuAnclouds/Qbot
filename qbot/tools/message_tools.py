@@ -23,6 +23,10 @@ class ImageTool:
                     data = await resp.read()
                     content_type = resp.headers.get("Content-Type", "image/jpeg")
                     b64 = base64.b64encode(data).decode("ascii")
+                    # 诊断: 打印真实下载信息，排查图片格式导致模型"收不到图片"
+                    print(f"[ImageTool-Diag] url={url[:90]}")
+                    print(f"[ImageTool-Diag] status={resp.status} content_type={content_type} 大小={len(data)} bytes")
+                    print(f"[ImageTool-Diag] data_url前缀=data:{content_type};base64,{b64[:40]}...")
                     return f"data:{content_type};base64,{b64}"
                 else:
                     print(f"[ImageTool] 下载失败 {resp.status}: {url}")
