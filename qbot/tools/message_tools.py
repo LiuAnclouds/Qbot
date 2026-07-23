@@ -7,14 +7,19 @@ import aiohttp
 from ..config import QQ_BOT
 
 # 被动回复的 msg_seq 必须递增且不重复，否则 QQ 返回 40054005 "消息被去重"。
-# 用进程级自增计数器，保证每次回复的 msg_seq 都不同。
-_msg_seq_counter = 0
+# 用"以毫秒时间戳为起点 + 严格自增"的计数器：起点取当前时间戳保证大于历史值
+# (跨重启也不撞去重窗口)，之后严格 +1 保证同毫秒内多次回复也不重复。
+_msg_seq_counter = int(time.time() * 1000)
 
 
 def _next_msg_seq() -> int:
     global _msg_seq_counter
     _msg_seq_counter += 1
-    return _msg_seq_counter
+    # QQ msg_seq 为 32 位有符号整数，溢出时回绕到一个安全的小值继续递增
+    val = _msg_seq_counter % 2147483647
+    if val == 0:
+        val = 1
+    return val
 
 
 class ImageTool:

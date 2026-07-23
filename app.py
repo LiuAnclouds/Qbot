@@ -38,6 +38,25 @@ llm = get_llm()
 gateway = QQGateway()
 running = True
 
+# 消息幂等去重: 防止重连补发/多实例导致同一条消息被重复处理+回复(连发多条)。
+# 用带容量上限的集合记录近期已处理的 message_id，重复的直接跳过。
+_processed_msg_ids: set[str] = set()
+_PROCESSED_LIMIT = 500
+
+
+def _is_duplicate(msg_id: str) -> bool:
+    """返回 True 表示该消息已处理过(重复)。"""
+    if not msg_id:
+        return False
+    if msg_id in _processed_msg_ids:
+        return True
+    _processed_msg_ids.add(msg_id)
+    # 超出容量时丢弃最旧的一半，避免无界增长
+    if len(_processed_msg_ids) > _PROCESSED_LIMIT:
+        for old in list(_processed_msg_ids)[: _PROCESSED_LIMIT // 2]:
+            _processed_msg_ids.discard(old)
+    return False
+
 
 # ============================================================
 # 事件处理
@@ -60,6 +79,12 @@ async def handle_event(event: dict, session: aiohttp.ClientSession):
     content, conv_id, extra, image_urls = MessageTool.extract_message(d)
     username = extra["author_username"] or extra["author_id"]
     user_id = extra["author_id"]
+    msg_id = extra["message_id"]
+
+    # 幂等去重: 同一 message_id 只处理一次，防止重连补发导致重复回复
+    if _is_duplicate(msg_id):
+        print(f"[Dedup] 跳过重复消息 {msg_id}: {content[:40]}")
+        return
 
     img_info = f", {len(image_urls)}张图片" if image_urls else ""
     print(f"[Event] {t} from {username} ({conv_id}): {content[:80]}{img_info}")
