@@ -45,7 +45,7 @@ class QQGateway:
             "op": 2,
             "d": {
                 "token": f"QQBot {self.access_token}",
-                "intents": 1 << 25 | 1 << 0,
+                "intents": (1 << 25) | (1 << 9) | (1 << 0),  # 群聊+私聊+频道消息+频道
                 "shard": [0, 1],
                 "properties": {
                     "$os": "linux",
