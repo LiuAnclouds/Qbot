@@ -27,6 +27,7 @@ from qbot.config import (
 )
 from qbot.core.gateway import QQGateway
 from qbot.core.llm_client import get_llm, select_model, clean_response
+from qbot.core.cmd_handler import CommandHandler, get_states, get_filter, TASK_MODES
 from qbot.memory.context_engine import get_engine, Message
 from qbot.tools.message_tools import MessageTool, ImageTool
 from qbot.skills.channel_skill import ChannelSkill, registry as skill_registry
@@ -64,6 +65,27 @@ async def handle_event(event: dict, session: aiohttp.ClientSession):
     print(f"[Event] {t} from {username} ({conv_id}): {content[:80]}{img_info}")
 
     if not content and not image_urls:
+        return
+
+    # 内容安全过滤: 用户输入违规直接拦截，不调用LLM
+    if content:
+        flt = get_filter().check(content)
+        if flt["violation"]:
+            print(f"[Filter] 拒绝违规输入 (类别: {flt['category']}): {content[:60]}")
+            token = await gateway.get_token()
+            await MessageTool.send_reply(
+                session, d, t,
+                f"⚠️ 你发送的内容含违规信息（类别：{flt['category']}），无法处理，请文明发言。",
+                token)
+            return
+
+    # ============================================================
+    # 指令拦截: /开头的消息作为指令处理，不调用LLM
+    # ============================================================
+    if content and CommandHandler.is_command(content):
+        cmd_reply = CommandHandler.handle(content, user_id, username)
+        token = await gateway.get_token()
+        await MessageTool.send_reply(session, d, t, cmd_reply, token)
         return
 
     # 图片预处理: 下载转为base64 (QQ内部CDN MiniMax访问不了)
@@ -116,12 +138,25 @@ async def handle_event(event: dict, session: aiohttp.ClientSession):
     if profile_summary:
         system += f"\n\n当前用户信息: {profile_summary}"
 
+    # 获取用户自定义模型和系统提示词
+    states = get_states()
+    system = states.get_system_prompt(user_id, system)
+    model = states.get_model(user_id)
+    max_tokens = states.get_max_tokens(user_id)
+
     # 调用 LLM
     reply = await llm.chat_with_fallback(
         messages=api_messages,
         system=system,
         has_image=bool(image_b64s),
     )
+
+    # 内容安全过滤: 模型输出也过一遍，违规则替换为安全提示
+    if reply:
+        out_flt = get_filter().check(reply)
+        if out_flt["violation"]:
+            print(f"[Filter] 模型回复违规 (类别: {out_flt['category']})，已替换")
+            reply = "抱歉，该回复涉及不适宜内容，无法展示。请换个话题试试。"
 
     # 记录Bot回复
     ctx.add_message(conv_id, Message(
