@@ -1,10 +1,20 @@
 """
 工具模块 — 图片下载、消息解析、回复发送
 """
-import asyncio, base64, json, re, io
+import asyncio, base64, json, re, io, time
 from datetime import datetime
 import aiohttp
 from ..config import QQ_BOT
+
+# 被动回复的 msg_seq 必须递增且不重复，否则 QQ 返回 40054005 "消息被去重"。
+# 用进程级自增计数器，保证每次回复的 msg_seq 都不同。
+_msg_seq_counter = 0
+
+
+def _next_msg_seq() -> int:
+    global _msg_seq_counter
+    _msg_seq_counter += 1
+    return _msg_seq_counter
 
 
 class ImageTool:
@@ -100,10 +110,10 @@ class MessageTool:
         if event_type == "GROUP_AT_MESSAGE_CREATE":
             group_id = payload.get("group_openid") or payload.get("group_id", "")
             url = f"{QQ_BOT['api_host']}/v2/groups/{group_id}/messages"
-            body = {"content": text, "msg_type": 0, "msg_id": payload.get("id"), "msg_seq": 1}
+            body = {"content": text, "msg_type": 0, "msg_id": payload.get("id"), "msg_seq": _next_msg_seq()}
         elif event_type == "C2C_MESSAGE_CREATE":
             url = f"{QQ_BOT['api_host']}/v2/users/{payload.get('author', {}).get('id', '')}/messages"
-            body = {"content": text, "msg_type": 0, "msg_id": payload.get("id"), "msg_seq": 1}
+            body = {"content": text, "msg_type": 0, "msg_id": payload.get("id"), "msg_seq": _next_msg_seq()}
         elif event_type == "AT_MESSAGE_CREATE":
             url = f"{QQ_BOT['api_host']}/channels/{payload.get('channel_id', '')}/messages"
             body = {"content": text, "msg_id": payload.get("id")}
