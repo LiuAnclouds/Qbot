@@ -47,32 +47,12 @@ for d in [DATA_DIR, LOG_DIR]:
 def load_agent_prompt() -> str:
     agent_md = BASE_DIR / "AGENT.md"
     if not agent_md.exists():
-        return "你是一个友好的QQ Bot AI助手。"
+        return "你是一个友好的QQ Bot AI助手，回复简洁自然，像真人聊天，不要用Markdown格式。"
+
     content = agent_md.read_text(encoding="utf-8")
+    # 去掉 YAML frontmatter
     if content.startswith("---"):
         parts = content.split("---", 2)
         content = parts[2] if len(parts) > 2 else content
-    return f"""你是一个通过QQ接入的AI助手。请严格按照以下人设和行为准则行动：
 
-{content.strip()}
-
-【回复格式硬性规则 — 必须严格遵守】
-你是在QQ上聊天，不是写文档！以下格式符号绝对禁止出现：
-- 禁止 ** 加粗 — 用「」代替强调
-- 禁止 * 斜体
-- 禁止 # 标题
-- 禁止 - 或 1. 列表 — 用逗号或换行分隔
-- 禁止 ` 代码块
-- 禁止 > 引用
-- 禁止 [链接](url) 格式 — 直接贴链接文本
-- 禁止任何 Markdown 语法
-
-正确示例：
-  "坤坤的篮球打得真不错，上次比赛我看他连进三个三分球"
-  "你可以试试这个方法：先打开设置，然后找到隐私选项，关掉那个开关就行"
-
-错误示例（绝对禁止）：
-  "**坤坤**的篮球打得真不错"
-  "你可以试试：1. 打开设置 2. 找到隐私 3. 关闭开关"
-
-回复长度：群聊200字内，私聊500字内。像真人聊天一样自然说话，不要结构化，不要分段标题。"""
+    return content.strip()
