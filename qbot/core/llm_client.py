@@ -15,11 +15,22 @@ def select_model(has_image: bool = False, is_compression: bool = False) -> str:
 
 
 def clean_response(content: str, model: str) -> str:
+    """清理模型输出: MiniMax thinking格式 + 残留Markdown符号"""
+    # MiniMax thinking/response 格式
     if model == MODELS["vision"] or "minimax" in model.lower():
         if " response" in content:
             parts = content.rsplit(" response", 1)
             if len(parts) > 1 and parts[1].strip():
-                return parts[1].strip()
+                content = parts[1]
+
+    # 清理残留 Markdown 符号 (DeepSeek 有时忽略 prompt 约束)
+    content = re.sub(r"\*\*(.+?)\*\*", r"\1", content)     # **粗体**
+    content = re.sub(r"\*(.+?)\*", r"\1", content)          # *斜体*
+    content = re.sub(r"`{1,3}[^`]*`{1,3}", "", content)    # `代码`
+    content = re.sub(r"^#{1,6}\s+", "", content, flags=re.MULTILINE)  # # 标题
+    content = re.sub(r"^>\s+", "", content, flags=re.MULTILINE)       # > 引用
+    content = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", content)       # [文字](url)
+
     return content.strip()
 
 
