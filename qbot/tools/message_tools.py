@@ -46,7 +46,9 @@ class MessageTool:
 
     @staticmethod
     def get_conversation_id(payload: dict) -> str:
-        if "group_id" in payload:
+        if "group_openid" in payload and payload["group_openid"]:
+            return f"group_{payload['group_openid']}"
+        if "group_id" in payload and payload["group_id"]:
             return f"group_{payload['group_id']}"
         if "guild_id" in payload:
             return f"guild_{payload['guild_id']}_channel_{payload.get('channel_id', '')}"
@@ -92,7 +94,8 @@ class MessageTool:
         }
 
         if event_type == "GROUP_AT_MESSAGE_CREATE":
-            url = f"{QQ_BOT['api_host']}/v2/groups/{payload.get('group_id')}/messages"
+            group_id = payload.get("group_openid") or payload.get("group_id", "")
+            url = f"{QQ_BOT['api_host']}/v2/groups/{group_id}/messages"
             body = {"content": text, "msg_type": 0, "msg_id": payload.get("id"), "msg_seq": 1}
         elif event_type == "C2C_MESSAGE_CREATE":
             url = f"{QQ_BOT['api_host']}/v2/users/{payload.get('author', {}).get('id', '')}/messages"

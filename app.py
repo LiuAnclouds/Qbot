@@ -52,7 +52,7 @@ async def handle_event(event: dict, session: aiohttp.ClientSession):
 
     # 群白名单检查
     if t == "GROUP_AT_MESSAGE_CREATE":
-        group_id = d.get("group_id", "")
+        group_id = d.get("group_openid") or d.get("group_id", "")
         if ALLOWED_GROUPS and group_id not in ALLOWED_GROUPS:
             return
 
