@@ -38,23 +38,48 @@ llm = get_llm()
 gateway = QQGateway()
 running = True
 
-# 消息幂等去重: 防止重连补发/多实例导致同一条消息被重复处理+回复(连发多条)。
-# 用带容量上限的集合记录近期已处理的 message_id，重复的直接跳过。
+# 消息幂等去重: 防止 QQ 网关重投/重连补发导致同一条消息被重复处理+回复(连发多条)。
+# QQ 重投时常换用新 message_id，所以单按 message_id 去重会失效。
+# 采用双重去重:
+#   1) message_id 相同 → 重复 (处理重连补发)
+#   2) 同会话(conv_id)+相同内容，且在 DEDUP_WINDOW 秒内 → 重复 (处理 QQ 重投新 message_id)
+import time as _time
+_DEDUP_WINDOW = 90  # 秒，QQ 重投通常在数十秒内
 _processed_msg_ids: set[str] = set()
+_recent_contents: dict[str, float] = {}  # key="conv_id|content" -> 首次处理时间戳
 _PROCESSED_LIMIT = 500
 
 
-def _is_duplicate(msg_id: str) -> bool:
+def _is_duplicate(msg_id: str, conv_id: str, content: str) -> bool:
     """返回 True 表示该消息已处理过(重复)。"""
-    if not msg_id:
-        return False
-    if msg_id in _processed_msg_ids:
+    now = _time.time()
+
+    # 规则1: message_id 重复
+    if msg_id and msg_id in _processed_msg_ids:
         return True
-    _processed_msg_ids.add(msg_id)
-    # 超出容量时丢弃最旧的一半，避免无界增长
-    if len(_processed_msg_ids) > _PROCESSED_LIMIT:
-        for old in list(_processed_msg_ids)[: _PROCESSED_LIMIT // 2]:
-            _processed_msg_ids.discard(old)
+
+    # 规则2: 同会话+同内容，时间窗内重复 (QQ 重投常带新 message_id)
+    if conv_id and content:
+        content_key = f"{conv_id}|{content[:200]}"
+        last = _recent_contents.get(content_key)
+        if last is not None and (now - last) < _DEDUP_WINDOW:
+            return True
+        _recent_contents[content_key] = now
+
+    # 记录 message_id
+    if msg_id:
+        _processed_msg_ids.add(msg_id)
+        if len(_processed_msg_ids) > _PROCESSED_LIMIT:
+            for old in list(_processed_msg_ids)[: _PROCESSED_LIMIT // 2]:
+                _processed_msg_ids.discard(old)
+
+    # 清理过期的内容去重记录，避免无界增长
+    if len(_recent_contents) > _PROCESSED_LIMIT:
+        cutoff = now - _DEDUP_WINDOW * 2
+        for k in list(_recent_contents):
+            if _recent_contents[k] < cutoff:
+                del _recent_contents[k]
+
     return False
 
 
@@ -81,9 +106,9 @@ async def handle_event(event: dict, session: aiohttp.ClientSession):
     user_id = extra["author_id"]
     msg_id = extra["message_id"]
 
-    # 幂等去重: 同一 message_id 只处理一次，防止重连补发导致重复回复
-    if _is_duplicate(msg_id):
-        print(f"[Dedup] 跳过重复消息 {msg_id}: {content[:40]}")
+    # 幂等去重: message_id 相同 OR 同会话同内容90秒内 → 跳过 (防QQ重投换新message_id)
+    if _is_duplicate(msg_id, conv_id, content):
+        print(f"[Dedup] 跳过重复消息 (msg_id={msg_id}): {content[:40]}")
         return
 
     img_info = f", {len(image_urls)}张图片" if image_urls else ""
