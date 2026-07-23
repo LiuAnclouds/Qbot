@@ -137,6 +137,12 @@ class ContextEngine:
         if self.is_noise(msg.content) and not msg.has_image:
             return False
         conv = self.get_conversation(conv_id)
+        # 存储层去重兜底: 与上一条用户消息完全相同则不入库，防止 QQ 重投/外层去重
+        # 失效时把重复消息写进历史，导致模型误判"用户重复问"。
+        if msg.role == "user" and conv.messages:
+            last = conv.messages[-1]
+            if last.role == "user" and last.content == msg.content and not msg.has_image:
+                return False
         conv.add(msg)
         self._save_conv(conv)
         return conv.needs_compress()
