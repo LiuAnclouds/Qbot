@@ -149,13 +149,8 @@ async def handle_event(event: dict, session: aiohttp.ClientSession):
     if user_id:
         ctx.update_profile(user_id, username, content)
 
-    # 记录用户消息
-    ctx.add_message(conv_id, Message(
-        role="user", content=content,
-        username=username, user_id=user_id,
-        timestamp=datetime.now().isoformat(),
-        has_image=bool(image_b64s),
-    ))
+    # 注意: 用户消息先不入库，构建 api_messages 后再存，避免当前消息在
+    # 历史上下文里重复出现一次(历史已含 + 又追加当前消息)，导致模型误判重复问。
 
     # 构建消息列表
     profile_summary = ctx.get_profile_summary(user_id) if user_id else ""
@@ -207,6 +202,14 @@ async def handle_event(event: dict, session: aiohttp.ClientSession):
         if out_flt["violation"]:
             print(f"[Filter] 模型回复违规 (类别: {out_flt['category']})，已替换")
             reply = "抱歉，该回复涉及不适宜内容，无法展示。请换个话题试试。"
+
+    # 记录用户消息 (LLM调用后入库，避免构建上下文时与当前消息重复)
+    ctx.add_message(conv_id, Message(
+        role="user", content=content,
+        username=username, user_id=user_id,
+        timestamp=datetime.now().isoformat(),
+        has_image=bool(image_b64s),
+    ))
 
     # 记录Bot回复
     ctx.add_message(conv_id, Message(
